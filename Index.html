@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gemeinsame Einkaufsliste</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #edf4ff, #f7f9fc);
+      color: #1f2937;
+      min-height: 100vh;
+      padding: 22px;
+    }
+    .app {
+      max-width: 720px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 14px 40px rgba(31, 41, 55, 0.14);
+    }
+    h1 { margin: 0 0 8px; font-size: 2rem; }
+    .hint { color: #6b7280; margin-bottom: 20px; }
+    .inputRow { display: flex; gap: 10px; margin-bottom: 20px; }
+    input {
+      flex: 1;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid #d1d5db;
+      font-size: 1rem;
+    }
+    button {
+      border: none;
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 1rem;
+      cursor: pointer;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+    }
+    button:hover { filter: brightness(0.95); }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 16px;
+      margin-bottom: 10px;
+      background: #f3f6fb;
+      border: 1px solid #e5e7eb;
+    }
+    .itemText { flex: 1; font-size: 1.05rem; }
+    .done .itemText { text-decoration: line-through; color: #9ca3af; }
+    .smallBtn {
+      padding: 9px 11px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      background: #e5e7eb;
+      color: #111827;
+    }
+    .delete { background: #ef4444; color: white; }
+    .status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 14px;
+      background: #ecfdf5;
+      color: #047857;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>🛒 Gemeinsame Einkaufsliste</h1>
+    <div class="hint">Alle Einträge werden live in Firebase gespeichert.</div>
+
+    <div class="inputRow">
+      <input id="itemInput" placeholder="z. B. Milch, Brot, Kaffee …" autocomplete="off" />
+      <button id="addBtn">+</button>
+    </div>
+
+    <ul id="list"></ul>
+    <div class="status" id="status">Verbinde mit Firebase …</div>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      deleteDoc,
+      updateDoc,
+      doc,
+      onSnapshot,
+      query,
+      orderBy,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBgYYYooJUztpjQmkheZuSEXCMmQ9gay7g",
+      authDomain: "einkaufsliste-33d2b.firebaseapp.com",
+      projectId: "einkaufsliste-33d2b",
+      storageBucket: "einkaufsliste-33d2b.firebasestorage.app",
+      messagingSenderId: "843365397590",
+      appId: "1:843365397590:web:aca98ab80456ce6e8c77f7",
+      measurementId: "G-HSZF25ZM58"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const einkaufRef = collection(db, "einkaufsliste");
+
+    const input = document.getElementById("itemInput");
+    const addBtn = document.getElementById("addBtn");
+    const list = document.getElementById("list");
+    const status = document.getElementById("status");
+
+    async function addItem() {
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      await addDoc(einkaufRef, {
+        text,
+        done: false,
+        createdAt: serverTimestamp()
+      });
+    }
+
+    addBtn.addEventListener("click", addItem);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") addItem();
+    });
+
+    const q = query(einkaufRef, orderBy("createdAt", "asc"));
+
+    onSnapshot(q, (snapshot) => {
+      list.innerHTML = "";
+
+      if (snapshot.empty) {
+        list.innerHTML = "<li>Noch nichts auf der Liste.</li>";
+      }
+
+      snapshot.forEach((documentSnapshot) => {
+        const item = documentSnapshot.data();
+        const id = documentSnapshot.id;
+
+        const li = document.createElement("li");
+        if (item.done) li.classList.add("done");
+
+        const textSpan = document.createElement("span");
+        textSpan.className = "itemText";
+        textSpan.textContent = item.text;
+
+        const doneBtn = document.createElement("button");
+        doneBtn.className = "smallBtn";
+        doneBtn.textContent = item.done ? "↩" : "✓";
+        doneBtn.onclick = () => updateDoc(doc(db, "einkaufsliste", id), {
+          done: !item.done
+        });
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "smallBtn delete";
+        deleteBtn.textContent = "X";
+        deleteBtn.onclick = () => deleteDoc(doc(db, "einkaufsliste", id));
+
+        li.appendChild(textSpan);
+        li.appendChild(doneBtn);
+        li.appendChild(deleteBtn);
+        list.appendChild(li);
+      });
+
+      status.textContent = "Live verbunden – Änderungen werden automatisch gespeichert.";
+    }, (error) => {
+      status.textContent = "Fehler: Prüfe die Firestore-Regeln und ob die Datenbank aktiv ist.";
+      console.error(error);
+    });
+  </script>
+</body>
+</html>
